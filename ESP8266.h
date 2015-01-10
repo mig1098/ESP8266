@@ -21,21 +21,56 @@
 #define ESP8266_H
 
 #include <Arduino.h>
+#include <string.h>
+#include <stdio.h>
+
+#define DEF_BAUDS 115200
+#define WIFI_READ_BUFFER_SIZE 128
+
+const char AT[] = "AT";
+const char AT_RESTART[] = "AT+RST";
+const char AT_MODE[]    = "AT+CWMODE=";
+const char AT_JOIN_AP[] = "AT+CWJAP=\"{0}\",\"{1}\"";
+//const char AT_LIST_AP[] = "AT+CWLAP";
+//const char AT_QUIT_AP[] = "AT+CWQAP";
+//const char AT_AP_MODE[] = "AT+CWSAP";
+const char AT_CHECK_IP[] = "AT+CIFSR";
+
+const char AT_REPLY_OK[] = "OK";
+const char AT_REPLY_READY[] = "ready";
+
+const char AT_MODE_STA[] = "1";
+const char AT_MODE_AP[] = "2";
+const char AT_MODE_BOTH[] = "3";
 
 class ESP8266 {
 public:
-	ESP8266(Stream& s = Serial) :serial(s) {}
-	uint8_t begin();
-	uint8_t connect(const char *ssid, const char *password);
-	String getIP();
+	ESP8266(HardwareSerial& serial = Serial, const unsigned long bauds = DEF_BAUDS):
+		_serial(serial),
+		_bauds(bauds)
+	{
+	}
+	void set_reset_pin(const uint8_t pin);
+	const bool begin();
+	void set_mode(const char *mode);
+	const bool connect(const char *ssid, const char *password);
+	const char* getIP();
+	const bool reset();
 private:
-	Stream& serial;
+	HardwareSerial& _serial;
+	const unsigned long _bauds;
+	uint8_t _hw_reset_pin = -1;
+	unsigned long _timeout = 1000;
 
-	uint8_t sendAndWait(String AT_Command, char *AT_Response, uint16_t wait);
-	String sendAndGetResult(String AT_Command, uint16_t wait);
-
-	/* Helpers */
-	String getValue(String data, char separator, int index);
+	const void send(uint8_t num, ...);
+	const void send(const char *AT_Command);
+	const bool sendAndWait(const char *AT_Command, const char *AT_Response);
+	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
+	void read_all();
+	const char* receive();
+	const bool waitResponse(const char *AT_Response);
+	const bool waitResponse(const char *AT_Response, const unsigned long timeout);
+	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout);
 };
 
 #endif /* ESP8266_H */
