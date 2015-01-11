@@ -24,3 +24,4 @@ References
 * [ESP8266 - NURDspace](https://nurdspace.nl/ESP8266)
 
 **This is a WIP.**
+While it is not complete, use full and stable lib from [itead](https://github.com/itead/ITEADLIB_Arduino_ESP8266)
