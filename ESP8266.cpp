@@ -19,6 +19,17 @@
 
 #include "ESP8266.h"
 //#include "Dns.h"
+
+#ifdef DEBUG
+//	#define DBG(num, args...) print_to_stream(DEBUG_SERIAL, args)
+#define dprint(args...) DEBUG_SERIAL.print(args)
+#define dprintln(args...) DEBUG_SERIAL.println(args)
+#else
+#define dprint(...)
+#define dprintln(...)
+#endif
+
+
 /* Helpers */
 
 // TODO: maybe it is better to use inet_aton from Dns.h,
@@ -33,11 +44,22 @@ const bool verifyIP(const char *str ) {
 			; //ok
 		else
 			return false;
+		++p;
 	}
 	if (dots != 3)
 		return false;
 
 	return true;
+}
+
+void print_to_stream(Stream& stream, uint8_t& num, va_list argList) {
+	for(; num; num--) {
+		char *str = va_arg(argList, char*);
+		dprint(str);
+		stream.print(str);
+	}
+	dprintln("");
+	stream.println("");
 }
 
 /* class methods */
@@ -50,10 +72,9 @@ void ESP8266::set_reset_pin(const uint8_t pin) {
 
 const bool ESP8266::begin() {
 	_serial.begin(_bauds);
-	_serial.setTimeout(100);
 
 	// basic test
-	if(!sendAndWait(AT, AT_REPLY_OK, 1))
+	if(!sendAndWait(AT, AT_REPLY_OK))
 		return false;
 
 	if(!reset())
@@ -83,8 +104,6 @@ const bool ESP8266::connect(const char *ssid, const char *password) {
 	if(!waitResponse(AT_REPLY_OK))
 		return false;
 
-	delay(5000);
-
 	unsigned long start_time = millis();
 	while(!verifyIP(getIP())) {
 		if (millis() - start_time > 30000)
@@ -97,22 +116,27 @@ const bool ESP8266::connect(const char *ssid, const char *password) {
 const char *ESP8266::getIP() {
 	static char ip[16];
 	memset(ip, 0, sizeof(ip));
+
 	char *str = (char *)sendAndGetResult(AT_CHECK_IP, 1000);
+	char *pstr = str;
 
-	uint8_t n = 0; // count \n
-	while(*str && n < 2)
-		if(*str == '\n') ++str;
+	while(*pstr && *pstr != '.')
+		++pstr;
+	while(*pstr != '\n') {
+		if (pstr == str) {
+			return ip; // empty
+		}
+		--pstr;
+	}
 
-	if (n != 2)
-		return ip; // empty
-	++str;
-	n = 0; // now it is for addressing
-	while(*str) {
-		if(*str == '\n')
+	++pstr;
+	uint8_t n = 0; // now it is for addressing
+	while(*pstr && n < 16) {
+		if(*pstr == '\n' || *pstr == '\0')
 			break;
-		ip[n] = *str;
+		ip[n] = *pstr;
 		++n;
-		++str;
+		++pstr;
 	}
 
 	return ip;
@@ -173,6 +197,8 @@ const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response)
 }
 
 const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout) {
+	read_all();
+
 	send(AT_Command);
 
 	return waitResponse(AT_Response, timeout);
@@ -180,28 +206,43 @@ const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response,
 
 const void ESP8266::send(uint8_t num, ...) {
 	va_list argList;
-	va_start(argList,num);
-	for(; num; num--) {
-		char *str = va_arg(argList, char*);
-		Serial.print(str);
-		_serial.print(str);
-	}
+	va_start(argList, num);
+	
+	dprint("CMD: ");
+	print_to_stream(_serial, num, argList);
 	va_end(argList);
-	Serial.println("");
-	_serial.println("");
+
 }
 
 const void ESP8266::send(const char *AT_Command) {
 	send(1, AT_Command);
 }
 
-const char* ESP8266::receive() {
+
+// copy of protected method from Stream class
+const int ESP8266::timedRead(unsigned long timeout) {
+  int c;
+  unsigned long _startMillis = millis();
+  do {
+    c = _serial.read();
+    if (c >= 0) return c;
+  } while(millis() - _startMillis < timeout);
+  return -1;     // -1 indicates timeout
+}
+
+const char* ESP8266::receive(unsigned long timeout /*= 0*/) {
 	static char buffer[WIFI_READ_BUFFER_SIZE];
 
 	uint8_t n = 0;
 	memset(buffer, 0, sizeof(buffer));
-	while(_serial.available() && n < WIFI_READ_BUFFER_SIZE - 1) {
-		buffer[n] = _serial.read();
+
+	if(timeout == 0)
+		timeout = _timeout;
+	while(n < WIFI_READ_BUFFER_SIZE - 1) {
+		int c = timedRead(timeout);
+		if (c < 0)
+			break;
+		buffer[n] = c;
 		n++;
 	}
 	buffer[n] = '\0';
@@ -210,23 +251,19 @@ const char* ESP8266::receive() {
 }
 
 const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned long timeout) {
-	Serial.print("Sending "); Serial.println(AT_Command);
+	read_all();
 
 	send(AT_Command);
 
 	unsigned long start_time = millis();
 	while(1) {
-		Serial.println("loop");
 		if (_serial.available())
 			break;
-		Serial.println("check1");
 		if(millis() - start_time > timeout)
 			break;
 
-		Serial.print("now: "); Serial.print(millis()); Serial.print("start:"); Serial.println(start_time);
 		delay(100); // Try to be energy efficient and don't use spinlocks
 	}
-		
 	return receive();
 }
 

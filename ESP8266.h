@@ -23,9 +23,15 @@
 #include <Arduino.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 
 #define DEF_BAUDS 115200
 #define WIFI_READ_BUFFER_SIZE 128
+
+
+#define DEBUG_SERIAL Serial
+
+#define DEBUG
 
 const char AT[] = "AT";
 const char AT_RESTART[] = "AT+RST";
@@ -67,10 +73,12 @@ private:
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response);
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
 	void read_all();
-	const char* receive();
+	const int timedRead(unsigned long timeout);
+	const char* receive(unsigned long timeout = 0);
 	const bool waitResponse(const char *AT_Response);
 	const bool waitResponse(const char *AT_Response, const unsigned long timeout);
 	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout);
 };
 
 #endif /* ESP8266_H */
+
