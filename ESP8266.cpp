@@ -71,7 +71,7 @@ const bool ESP8266::begin() {
 	_serial.begin(_bauds);
 
 	// basic test
-	if(!sendAndWait(AT, AT_REPLY_OK))
+	if(!sendAndWait("AT", AT_REPLY_OK))
 		return false;
 
 	if(!reset())
@@ -91,7 +91,7 @@ void ESP8266::read_all() {
 }
 
 void ESP8266::set_mode(const char *mode) {
-	send(2, AT_MODE, mode);
+	send(2, "AT+CWMODE=", mode);
 	read_all();
 }
 
@@ -114,7 +114,7 @@ const char *ESP8266::getIP() {
 	static char ip[16];
 	memset(ip, 0, sizeof(ip));
 
-	char *str = (char *)sendAndGetResult(AT_CHECK_IP, 3000);
+	char *str = (char *)sendAndGetResult("AT+CIFSR", 3000);
 	char *pstr = str;
 
 	while(*pstr && *pstr != '.')
@@ -130,7 +130,6 @@ const char *ESP8266::getIP() {
 	++pstr;
 	uint8_t n = 0;
 	while(*pstr && n < 16) {
-//		if(*pstr == '\n' || *pstr == '\0')
 		if(!(*pstr == '.' || (*pstr >= '0' && *pstr <= '9')))
 			break;
 		ip[n] = *pstr;
@@ -152,7 +151,7 @@ const bool ESP8266::reset() {
 
 	// Try software reset
 	for (uint8_t retry = 0; retry < reset_retries; ++retry) {
-		if(sendAndWait(AT_RESTART, AT_REPLY_READY))
+		if(sendAndWait("AT+RST", AT_REPLY_READY))
 			return true;
 	}
 

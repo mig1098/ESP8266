@@ -51,15 +51,6 @@ extern SoftwareSerial dbgSerial;
 
 #endif // WIFI_DEBUG
 
-const char AT[] = "AT";
-const char AT_RESTART[] = "AT+RST";
-const char AT_MODE[]    = "AT+CWMODE=";
-const char AT_JOIN_AP[] = "AT+CWJAP=\"{0}\",\"{1}\"";
-//const char AT_LIST_AP[] = "AT+CWLAP";
-//const char AT_QUIT_AP[] = "AT+CWQAP";
-//const char AT_AP_MODE[] = "AT+CWSAP";
-const char AT_CHECK_IP[] = "AT+CIFSR";
-
 const char AT_REPLY_OK[] = "OK";
 const char AT_REPLY_READY[] = "ready";
 
