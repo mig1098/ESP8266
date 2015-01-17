@@ -1,8 +1,8 @@
 #include <SoftwareSerial.h>
 #include <ESP8266.h>
 
-#define SSID "sloniki"
-#define PASS "MyOwnBlend"
+#define SSID "SSID"
+#define PASS "PASS"
 
 #ifdef MEGA
 #define wifi_serial Serial1
