@@ -25,13 +25,31 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define DEF_BAUDS 115200
+//#define MEGA
+#define WIFI_DEBUG
+
+#define WIFI_BAUDS 115200
 #define WIFI_READ_BUFFER_SIZE 128
 
+#ifdef WIFI_DEBUG
 
+#ifdef MEGA
 #define DEBUG_SERIAL Serial
+#else
+#include <SoftwareSerial.h>
+extern SoftwareSerial dbgSerial;
+#define DEBUG_SERIAL dbgSerial
+#endif // MEGA
+//	#define DBG(num, args...) print_to_stream(DEBUG_SERIAL, args)
+#define dprint(args...) DEBUG_SERIAL.print(args)
+#define dprintln(args...) DEBUG_SERIAL.println(args)
 
-#define DEBUG
+#else // WIFI_DEBUG
+
+#define dprint(...)
+#define dprintln(...)
+
+#endif // WIFI_DEBUG
 
 const char AT[] = "AT";
 const char AT_RESTART[] = "AT+RST";
@@ -51,7 +69,7 @@ const char AT_MODE_BOTH[] = "3";
 
 class ESP8266 {
 public:
-	ESP8266(HardwareSerial& serial = Serial, const unsigned long bauds = DEF_BAUDS):
+	ESP8266(HardwareSerial& serial = Serial, const unsigned long bauds = WIFI_BAUDS):
 		_serial(serial),
 		_bauds(bauds)
 	{

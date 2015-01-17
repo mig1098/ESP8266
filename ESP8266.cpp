@@ -20,15 +20,9 @@
 #include "ESP8266.h"
 //#include "Dns.h"
 
-#ifdef DEBUG
-//	#define DBG(num, args...) print_to_stream(DEBUG_SERIAL, args)
-#define dprint(args...) DEBUG_SERIAL.print(args)
-#define dprintln(args...) DEBUG_SERIAL.println(args)
-#else
-#define dprint(...)
-#define dprintln(...)
+#ifdef WIFI_DEBUG
+SoftwareSerial dbgSerial(11, 12);
 #endif
-
 
 /* Helpers */
 
@@ -40,7 +34,7 @@ const bool verifyIP(const char *str ) {
 	while (*p) {
 		if (*p == '.')
 			++dots;
-		else if ((*p >= '0') || (*p <= '9') )
+		else if ((*p >= '0') && (*p <= '9') )
 			; //ok
 		else
 			return false;
@@ -71,6 +65,9 @@ void ESP8266::set_reset_pin(const uint8_t pin) {
 }
 
 const bool ESP8266::begin() {
+#ifdef WIFI_DEBUG
+	dbgSerial.begin(9600);
+#endif
 	_serial.begin(_bauds);
 
 	// basic test
@@ -117,28 +114,33 @@ const char *ESP8266::getIP() {
 	static char ip[16];
 	memset(ip, 0, sizeof(ip));
 
-	char *str = (char *)sendAndGetResult(AT_CHECK_IP, 1000);
+	char *str = (char *)sendAndGetResult(AT_CHECK_IP, 3000);
 	char *pstr = str;
 
 	while(*pstr && *pstr != '.')
 		++pstr;
-	while(*pstr != '\n') {
-		if (pstr == str) {
-			return ip; // empty
-		}
+	
+	if (pstr == str)
+		return ip; // empty
+	
+	while(*pstr != '\n' && pstr != str) {
 		--pstr;
 	}
 
 	++pstr;
-	uint8_t n = 0; // now it is for addressing
+	uint8_t n = 0;
 	while(*pstr && n < 16) {
-		if(*pstr == '\n' || *pstr == '\0')
+//		if(*pstr == '\n' || *pstr == '\0')
+		if(!(*pstr == '.' || (*pstr >= '0' && *pstr <= '9')))
 			break;
 		ip[n] = *pstr;
 		++n;
 		++pstr;
 	}
 
+	dprint("getIP returned: '");
+	dprint(ip);
+	dprintln("'");
 	return ip;
 }
 
@@ -247,6 +249,8 @@ const char* ESP8266::receive(unsigned long timeout /*= 0*/) {
 	}
 	buffer[n] = '\0';
 
+	dprint("GOT: ");
+	dprintln(buffer);
 	return buffer;
 }
 
@@ -264,6 +268,6 @@ const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned lon
 
 		delay(100); // Try to be energy efficient and don't use spinlocks
 	}
-	return receive();
+	return receive(timeout);
 }
 
