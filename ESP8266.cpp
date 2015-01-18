@@ -23,6 +23,7 @@
 #ifdef WIFI_DEBUG
 SoftwareSerial dbgSerial(11, 12);
 #endif
+char buffer[WIFI_BUFFER_SIZE];
 
 /* Helpers */
 
@@ -70,11 +71,11 @@ const bool ESP8266::begin() {
 #endif
 	_serial.begin(_bauds);
 
-	// basic test
-	if(!sendAndWait("AT", AT_REPLY_OK))
+	if(!reset())
 		return false;
 
-	if(!reset())
+	// basic test
+	if(!sendAndWait("AT", AT_REPLY_OK))
 		return false;
 
 	set_mode(AT_MODE_BOTH);
@@ -90,9 +91,15 @@ void ESP8266::read_all() {
 		_serial.read();
 }
 
-void ESP8266::set_mode(const char *mode) {
-	send(2, "AT+CWMODE=", mode);
-	read_all();
+const bool ESP8266::set_mode(uint8_t mode) {
+	sprintf(buffer, "%s%u", "AT+CWMODE=",mode);
+	
+	char *reply = (char *)sendAndGetResult(buffer, 3000);
+	
+	if (strstr(buffer, AT_REPLY_OK) || strstr(buffer, AT_REPLY_NO_CHANGE))
+		return true;
+	
+	return false;
 }
 
 const bool ESP8266::connect(const char *ssid, const char *password) {
@@ -177,19 +184,8 @@ const bool ESP8266::waitResponse(const char *AT_Response) {
 const bool ESP8266::waitResponse(const char *AT_Response, const unsigned long timeout) {
 	unsigned long start_time = millis();
 
-	while (1) {
-		if (_serial.available() && _serial.find((char*)AT_Response))
-		{
-			return true;
-		}
-
-		if (millis() - start_time > timeout)
-			break;
-		delay(100); // Try to be energy efficient and don't use spinlocks
-	}
-
-	return false;
-	
+	char *reply = (char *)receive_until(AT_Response, timeout);
+	return strstr(reply, AT_Response);
 }
 
 
@@ -231,33 +227,47 @@ const int ESP8266::timedRead(unsigned long timeout) {
   return -1;     // -1 indicates timeout
 }
 
-const char* ESP8266::receive(unsigned long timeout /*= 0*/) {
-	static char buffer[WIFI_READ_BUFFER_SIZE];
+const char* ESP8266::receive_until(const char *endstr, unsigned long timeout /*= 0*/) {
+	uint16_t n = 0;
+	unsigned long read_timeout = timeout;
 
-	uint8_t n = 0;
-	memset(buffer, 0, sizeof(buffer));
+	if(read_timeout == 0)
+		read_timeout = _timeout;
 
-	if(timeout == 0)
-		timeout = _timeout;
-	while(n < WIFI_READ_BUFFER_SIZE - 1) {
-		int c = timedRead(timeout);
-		if (c < 0)
-			break;
-		buffer[n] = c;
-		n++;
+	if(endstr) {
+		read_timeout = 300;
+	}
+
+	unsigned long start_time = millis();
+	while(n < WIFI_BUFFER_SIZE - 1) {
+		int c = timedRead(read_timeout);
+		if (c < 0) {
+			// stop reading if we don't wait for specific ending
+			// or if timeout exceded
+			if(!endstr || (millis() - start_time > timeout))
+				break;
+			// else, break if endstr found
+			if(strstr(buffer, endstr))
+				break;
+		} else {
+			buffer[n] = c;
+			n++;
+		}
 	}
 	buffer[n] = '\0';
 
-	dprint("GOT: ");
-	dprintln(buffer);
+	dprint("GOT: '");
+	dprint(buffer);
+	dprintln("'");
+
 	return buffer;
 }
 
-const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned long timeout) {
-	read_all();
+const char* ESP8266::receive(unsigned long timeout /*= 0*/) {
+	return receive_until(NULL, timeout);
+}
 
-	send(AT_Command);
-
+void ESP8266::wait_for_data(const unsigned long timeout) {
 	unsigned long start_time = millis();
 	while(1) {
 		if (_serial.available())
@@ -267,6 +277,49 @@ const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned lon
 
 		delay(100); // Try to be energy efficient and don't use spinlocks
 	}
-	return receive(timeout);
+}
+
+const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned long timeout) {
+	read_all();
+
+	send(AT_Command);
+
+	wait_for_data(timeout);
+
+	return receive();
+}
+
+const bool ESP8266::confMux(const bool val) {
+	sprintf(buffer, "AT+CIPMUX=%u", val ? 1 : 0);
+
+	return sendAndWait(buffer, AT_REPLY_OK);
+}
+
+const bool ESP8266::confServer(const uint8_t mode /* = 1 */, const uint16_t port /* = 80 */) {
+	confMux(true);
+
+	sprintf(buffer, "AT+CIPSERVER=%u,%u", mode, port);
+
+	char *reply = (char *)sendAndGetResult(buffer, 3000);
+	
+	if (strstr(buffer, AT_REPLY_OK) || strstr(buffer, AT_REPLY_NO_CHANGE))
+		return true;
+
+	return false;
+}
+
+const char* ESP8266::ReceiveMessage() {
+	char *msg = (char*)receive_until("\nOK", 5000);
+
+	if (!strlen(msg))
+		return NULL;
+
+	msg = strstr(msg, "+IPD");
+	if (!msg)
+		return NULL;
+
+	
+
+	return msg;
 }
 

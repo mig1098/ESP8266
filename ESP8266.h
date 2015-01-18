@@ -29,7 +29,7 @@
 #define WIFI_DEBUG
 
 #define WIFI_BAUDS 115200
-#define WIFI_READ_BUFFER_SIZE 128
+#define WIFI_BUFFER_SIZE 1024
 
 #ifdef WIFI_DEBUG
 
@@ -53,10 +53,11 @@ extern SoftwareSerial dbgSerial;
 
 const char AT_REPLY_OK[] = "OK";
 const char AT_REPLY_READY[] = "ready";
+const char AT_REPLY_NO_CHANGE[] = "no change";
 
-const char AT_MODE_STA[] = "1";
-const char AT_MODE_AP[] = "2";
-const char AT_MODE_BOTH[] = "3";
+const uint8_t AT_MODE_STA = 1;
+const uint8_t AT_MODE_AP = 2;
+const uint8_t AT_MODE_BOTH = 3;
 
 class ESP8266 {
 public:
@@ -67,15 +68,18 @@ public:
 	}
 	void set_reset_pin(const uint8_t pin);
 	const bool begin();
-	void set_mode(const char *mode);
+	const bool set_mode(uint8_t mode);
 	const bool connect(const char *ssid, const char *password);
 	const char* getIP();
 	const bool reset();
+	const bool confServer(const uint8_t mode = 1, const uint16_t port = 80);
+	const bool confMux(const bool val);
+	const char* ReceiveMessage();
 private:
 	HardwareSerial& _serial;
 	const unsigned long _bauds;
 	uint8_t _hw_reset_pin = -1;
-	unsigned long _timeout = 1000;
+	unsigned long _timeout = 3000;
 
 	const void send(uint8_t num, ...);
 	const void send(const char *AT_Command);
@@ -83,7 +87,9 @@ private:
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
 	void read_all();
 	const int timedRead(unsigned long timeout);
+	void wait_for_data(const unsigned long timeout);
 	const char* receive(unsigned long timeout = 0);
+	const char* receive_until(const char *endstr, unsigned long timeout = 0);
 	const bool waitResponse(const char *AT_Response);
 	const bool waitResponse(const char *AT_Response, const unsigned long timeout);
 	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout);
