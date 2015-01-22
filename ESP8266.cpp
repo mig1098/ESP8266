@@ -22,7 +22,9 @@
 //#include "Dns.h"
 
 #ifdef WIFI_DEBUG
+#ifndef MEGA
 SoftwareSerial dbgSerial(WIFI_DEBUG_RX_PIN, WIFI_DEBUG_TX_PIN);
+#endif
 #endif
 
 char buffer[WIFI_BUFFER_SIZE];
@@ -47,7 +49,7 @@ void ESP8266::set_reset_pin(const uint8_t pin) {
 
 const bool ESP8266::begin() {
 #ifdef WIFI_DEBUG
-	dbgSerial.begin(DBG_BAUDS);
+	DEBUG_SERIAL.begin(DBG_BAUDS);
 #endif
 	_serial.begin(_bauds);
 
@@ -71,7 +73,7 @@ void ESP8266::read_all() {
 const bool ESP8266::set_mode(uint8_t mode) {
 	sprintf(buffer, "AT+CWMODE=%u", mode);
 	
-	char *reply = (char *)sendAndGetResult(buffer, 3000);
+	char *reply = (char *)sendAndGetResult(buffer);
 
 	if(strstr(buffer, AT_REPLY_NO_CHANGE))
 		return true;
@@ -102,7 +104,7 @@ const char *ESP8266::getIP() {
 	static char ip[16];
 	memset(ip, 0, sizeof(ip));
 
-	char *str = (char *)sendAndGetResult("AT+CIFSR", 3000);
+	char *str = (char *)sendAndGetResult("AT+CIFSR");
 	char *pstr = str;
 
 	while(*pstr && *pstr != '.')
@@ -125,9 +127,6 @@ const char *ESP8266::getIP() {
 		++pstr;
 	}
 
-	dprint("getIP returned: '");
-	dprint(ip);
-	dprintln("'");
 	return ip;
 }
 
@@ -139,7 +138,7 @@ const bool ESP8266::reset() {
 
 	// Try software reset
 	for (uint8_t retry = 0; retry < reset_retries; ++retry) {
-		dprint("reset retry: "); dprintln(retry);
+		dprint("rst:"); dprintln(retry);
 		if(sendAndWait("AT+RST", AT_REPLY_READY))
 			return true;
 	}
@@ -166,9 +165,9 @@ const bool ESP8266::waitResponse(const char *AT_Response) {
 const bool ESP8266::waitResponse(const char *AT_Response, const unsigned long timeout) {
 	unsigned long start_time = millis();
 
-	dprintln("waiting response");
+	dprintln("wr");
 	char *reply = (char *)receive_until(AT_Response, timeout);
-	dprintln("receive_until finished");
+	dprintln("ru fin");
 	return strstr(reply, AT_Response);
 }
 
@@ -181,9 +180,7 @@ const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response,
 	read_all();
 
 	send(AT_Command);
-	dprintln("sending endline");
 	sendln();
-	dprintln("command sent");
 
 	return waitResponse(AT_Response, timeout);
 }
@@ -191,7 +188,7 @@ const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response,
 const void ESP8266::sendln() {
 
 	_serial.println("");
-	dprintln("!");
+	dprintln("");
 
 }
 
@@ -268,7 +265,9 @@ const char* ESP8266::receive(unsigned long timeout /*= 0*/) {
 	return receive_until(NULL, timeout);
 }
 
-void ESP8266::wait_for_data(const unsigned long timeout) {
+void ESP8266::wait_for_data(unsigned long timeout) {
+	if(timeout == 0)
+		timeout = _timeout;
 	unsigned long start_time = millis();
 	while(1) {
 		if (_serial.available())
@@ -302,7 +301,7 @@ const bool ESP8266::confServer(const uint8_t mode /* = 1 */, const uint16_t port
 
 	sprintf(buffer, "AT+CIPSERVER=%u,%u", mode, port);
 
-	char *reply = (char *)sendAndGetResult(buffer, 3000);
+	char *reply = (char *)sendAndGetResult(buffer);
 	
 	if (strstr(buffer, AT_REPLY_OK) || strstr(buffer, AT_REPLY_NO_CHANGE))
 		return true;
@@ -315,39 +314,33 @@ const char* ESP8266::ReceiveMessage() {
 	//+IPD,<id>,<len>:<data>
 	char *msg = (char*)receive_until("\nOK", 5000);
 
-	dprintln("checking len");
 	if (!strlen(msg))
 		return NULL;
 
-	dprintln("searching +IPD");
-	msg = strstr(msg, "+IPD");
-	if (!msg)
+	char *msgp = strstr(msg, "+IPD");
+	if (!msgp)
 		return NULL;
 
-	msg += 5;
-	// parse connection id if multiple connection mode
-	{
-		dprintln("searching for conn_id");
-		conn_id = -1;
-		char *p = msg;
-		while(*p != ':') {
-			if(*p == ',') {
-				conn_id = parse_uint(msg);
-				dprint("conn_id=");
-				dprintln(conn_id);
-				break;
-			}
+	msgp += 5;
+
+	/* parse connection id if multiple connection mode */
+	conn_id = -1;
+	char *p = msgp;
+	for(char *p = msgp; *p != ':'; ++p) {
+		if(*p == ',') {
+			conn_id = parse_uint(msgp);
+			dprint("conn_id=");dprintln(conn_id);
+			break;
 		}
-		dprint("len=");
-		dprintln(parse_uint(++p));
 	}
+	/* *********************************************** */
+	
+	msgp = strstr(msgp, ":");
+	msgp++;
 
-	msg = strstr(msg, ":");
-	msg++;
-
-	dprint("Received: ");
-	dprintln(msg);
-	return msg;
+	dprint("RCV: ");
+	dprintln(msgp);
+	return msgp;
 }
 
 
