@@ -18,43 +18,23 @@
 */
 
 #include "ESP8266.h"
+#include "ESP8266Funcs.h"
 //#include "Dns.h"
 
 #ifdef WIFI_DEBUG
-SoftwareSerial dbgSerial(11, 12);
+SoftwareSerial dbgSerial(WIFI_DEBUG_RX_PIN, WIFI_DEBUG_TX_PIN);
 #endif
+
 char buffer[WIFI_BUFFER_SIZE];
+int8_t conn_id;
 
-/* Helpers */
-
-// TODO: maybe it is better to use inet_aton from Dns.h,
-// but calling that function requires creating Dns object
-const bool verifyIP(const char *str ) {
-	char *p = (char *)str;
-	uint8_t dots = 0;
-	while (*p) {
-		if (*p == '.')
-			++dots;
-		else if ((*p >= '0') && (*p <= '9') )
-			; //ok
-		else
-			return false;
-		++p;
-	}
-	if (dots != 3)
-		return false;
-
-	return true;
-}
-
+/* Helper functions */
 void print_to_stream(Stream& stream, uint8_t& num, va_list argList) {
 	for(; num; num--) {
 		char *str = va_arg(argList, char*);
 		dprint(str);
 		stream.print(str);
 	}
-	dprintln("");
-	stream.println("");
 }
 
 /* class methods */
@@ -67,7 +47,7 @@ void ESP8266::set_reset_pin(const uint8_t pin) {
 
 const bool ESP8266::begin() {
 #ifdef WIFI_DEBUG
-	dbgSerial.begin(9600);
+	dbgSerial.begin(DBG_BAUDS);
 #endif
 	_serial.begin(_bauds);
 
@@ -80,9 +60,6 @@ const bool ESP8266::begin() {
 
 	set_mode(AT_MODE_BOTH);
 	
-	if(!reset())
-		return false;
-
 	return true;
 }
 
@@ -92,18 +69,22 @@ void ESP8266::read_all() {
 }
 
 const bool ESP8266::set_mode(uint8_t mode) {
-	sprintf(buffer, "%s%u", "AT+CWMODE=",mode);
+	sprintf(buffer, "AT+CWMODE=%u", mode);
 	
 	char *reply = (char *)sendAndGetResult(buffer, 3000);
-	
-	if (strstr(buffer, AT_REPLY_OK) || strstr(buffer, AT_REPLY_NO_CHANGE))
+
+	if(strstr(buffer, AT_REPLY_NO_CHANGE))
 		return true;
+
+	if (strstr(buffer, AT_REPLY_OK))
+		return reset();
 	
 	return false;
 }
 
 const bool ESP8266::connect(const char *ssid, const char *password) {
 	send(5, "AT+CWJAP=\"", ssid, "\",\"", password, "\"");
+	sendln();
 	
 	if(!waitResponse(AT_REPLY_OK))
 		return false;
@@ -158,6 +139,7 @@ const bool ESP8266::reset() {
 
 	// Try software reset
 	for (uint8_t retry = 0; retry < reset_retries; ++retry) {
+		dprint("reset retry: "); dprintln(retry);
 		if(sendAndWait("AT+RST", AT_REPLY_READY))
 			return true;
 	}
@@ -184,7 +166,9 @@ const bool ESP8266::waitResponse(const char *AT_Response) {
 const bool ESP8266::waitResponse(const char *AT_Response, const unsigned long timeout) {
 	unsigned long start_time = millis();
 
+	dprintln("waiting response");
 	char *reply = (char *)receive_until(AT_Response, timeout);
+	dprintln("receive_until finished");
 	return strstr(reply, AT_Response);
 }
 
@@ -197,8 +181,18 @@ const bool ESP8266::sendAndWait(const char *AT_Command, const char *AT_Response,
 	read_all();
 
 	send(AT_Command);
+	dprintln("sending endline");
+	sendln();
+	dprintln("command sent");
 
 	return waitResponse(AT_Response, timeout);
+}
+
+const void ESP8266::sendln() {
+
+	_serial.println("");
+	dprintln("!");
+
 }
 
 const void ESP8266::send(uint8_t num, ...) {
@@ -228,7 +222,6 @@ const int ESP8266::timedRead(unsigned long timeout) {
 }
 
 const char* ESP8266::receive_until(const char *endstr, unsigned long timeout /*= 0*/) {
-	uint16_t n = 0;
 	unsigned long read_timeout = timeout;
 
 	if(read_timeout == 0)
@@ -236,9 +229,17 @@ const char* ESP8266::receive_until(const char *endstr, unsigned long timeout /*=
 
 	if(endstr) {
 		read_timeout = 300;
+//		dprint("endstr: ");
+//		dprintln(endstr);
 	}
 
+//	dprint("timeout=");
+//	dprint(timeout);
+//	dprint(", read_timeout=");
+//	dprintln(read_timeout);
+
 	unsigned long start_time = millis();
+	uint16_t n = 0;
 	while(n < WIFI_BUFFER_SIZE - 1) {
 		int c = timedRead(read_timeout);
 		if (c < 0) {
@@ -283,6 +284,7 @@ const char* ESP8266::sendAndGetResult(const char *AT_Command, const unsigned lon
 	read_all();
 
 	send(AT_Command);
+	sendln();
 
 	wait_for_data(timeout);
 
@@ -309,17 +311,82 @@ const bool ESP8266::confServer(const uint8_t mode /* = 1 */, const uint16_t port
 }
 
 const char* ESP8266::ReceiveMessage() {
+	//+IPD,<len>:<data>
+	//+IPD,<id>,<len>:<data>
 	char *msg = (char*)receive_until("\nOK", 5000);
 
+	dprintln("checking len");
 	if (!strlen(msg))
 		return NULL;
 
+	dprintln("searching +IPD");
 	msg = strstr(msg, "+IPD");
 	if (!msg)
 		return NULL;
 
-	
+	msg += 5;
+	// parse connection id if multiple connection mode
+	{
+		dprintln("searching for conn_id");
+		conn_id = -1;
+		char *p = msg;
+		while(*p != ':') {
+			if(*p == ',') {
+				conn_id = parse_uint(msg);
+				dprint("conn_id=");
+				dprintln(conn_id);
+				break;
+			}
+		}
+		dprint("len=");
+		dprintln(parse_uint(++p));
+	}
 
+	msg = strstr(msg, ":");
+	msg++;
+
+	dprint("Received: ");
+	dprintln(msg);
 	return msg;
+}
+
+
+const char* ESP8266::get_buffer() {
+	return buffer;
+}
+
+bool ESP8266::Reply(const char *reply) {
+	send("AT+CIPSEND=");
+	if(conn_id >= 0) {
+		send(int_to_str(conn_id));
+		send(",");
+	}
+	bool result = true;
+	if(sendAndWait(int_to_str(strlen(reply)), ">")) {
+		// FIXME: maybe there is excessive \n
+		result = sendAndWait(reply, "SEND OK");
+	} else
+		result = false;
+
+
+	closeMux();
+
+	return true;
+}
+
+void ESP8266::closeMux() {
+	send("AT+CIPCLOSE");
+	if (conn_id >= 0) {
+		send("=");
+		send(int_to_str(conn_id));
+	}
+	sendln();
+
+	receive(3000); // FIXME: very long static timeout here
+	// FIXME: wait for one of
+	// "Linked" or "ERROR" or "we must restart" in single mode
+	// if "OK" or "Link is not" or "Cant close" in multiple connection mode
+
+	conn_id = -1;
 }
 
