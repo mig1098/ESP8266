@@ -21,21 +21,79 @@
 #define ESP8266_H
 
 #include <Arduino.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
+
+//#define MEGA
+#define WIFI_DEBUG
+
+#define WIFI_BAUDS 115200
+#define WIFI_BUFFER_SIZE 1024
+
+#ifdef WIFI_DEBUG
+
+#ifdef MEGA
+#define DEBUG_SERIAL Serial
+#else
+#include <SoftwareSerial.h>
+extern SoftwareSerial dbgSerial;
+#define DEBUG_SERIAL dbgSerial
+#endif // MEGA
+//	#define DBG(num, args...) print_to_stream(DEBUG_SERIAL, args)
+#define dprint(args...) DEBUG_SERIAL.print(args)
+#define dprintln(args...) DEBUG_SERIAL.println(args)
+
+#else // WIFI_DEBUG
+
+#define dprint(...)
+#define dprintln(...)
+
+#endif // WIFI_DEBUG
+
+const char AT_REPLY_OK[] = "OK";
+const char AT_REPLY_READY[] = "ready";
+const char AT_REPLY_NO_CHANGE[] = "no change";
+
+const uint8_t AT_MODE_STA = 1;
+const uint8_t AT_MODE_AP = 2;
+const uint8_t AT_MODE_BOTH = 3;
 
 class ESP8266 {
 public:
-	ESP8266(Stream& s = Serial) :serial(s) {}
-	uint8_t begin();
-	uint8_t connect(const char *ssid, const char *password);
-	String getIP();
+	ESP8266(HardwareSerial& serial = Serial, const unsigned long bauds = WIFI_BAUDS):
+		_serial(serial),
+		_bauds(bauds)
+	{
+	}
+	void set_reset_pin(const uint8_t pin);
+	const bool begin();
+	const bool set_mode(uint8_t mode);
+	const bool connect(const char *ssid, const char *password);
+	const char* getIP();
+	const bool reset();
+	const bool confServer(const uint8_t mode = 1, const uint16_t port = 80);
+	const bool confMux(const bool val);
+	const char* ReceiveMessage();
 private:
-	Stream& serial;
+	HardwareSerial& _serial;
+	const unsigned long _bauds;
+	uint8_t _hw_reset_pin = -1;
+	unsigned long _timeout = 3000;
 
-	uint8_t sendAndWait(String AT_Command, char *AT_Response, uint16_t wait);
-	String sendAndGetResult(String AT_Command, uint16_t wait);
-
-	/* Helpers */
-	String getValue(String data, char separator, int index);
+	const void send(uint8_t num, ...);
+	const void send(const char *AT_Command);
+	const bool sendAndWait(const char *AT_Command, const char *AT_Response);
+	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
+	void read_all();
+	const int timedRead(unsigned long timeout);
+	void wait_for_data(const unsigned long timeout);
+	const char* receive(unsigned long timeout = 0);
+	const char* receive_until(const char *endstr, unsigned long timeout = 0);
+	const bool waitResponse(const char *AT_Response);
+	const bool waitResponse(const char *AT_Response, const unsigned long timeout);
+	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout);
 };
 
 #endif /* ESP8266_H */
+
