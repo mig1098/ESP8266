@@ -242,10 +242,10 @@ const char* ESP8266::receive_until(const char *endstr, unsigned long timeout /*=
 		if (c < 0) {
 			// stop reading if we don't wait for specific ending
 			// or if timeout exceded
-			if(!endstr || (millis() - start_time > timeout))
+			if(!endstr || strstr(buffer, endstr))
 				break;
 			// else, break if endstr found
-			if(strstr(buffer, endstr))
+			if(millis() - start_time > timeout)
 				break;
 		} else {
 			buffer[n] = c;
@@ -338,8 +338,8 @@ const char* ESP8266::ReceiveMessage() {
 	msgp = strstr(msgp, ":");
 	msgp++;
 
-	dprint("RCV: ");
-	dprintln(msgp);
+//	dprint("RCV: ");
+//	dprintln(msgp);
 	return msgp;
 }
 
@@ -354,17 +354,37 @@ bool ESP8266::Reply(const char *reply) {
 		send(int_to_str(conn_id));
 		send(",");
 	}
+
+	send(int_to_str(strlen(reply)));
+	sendln();
+
+	unsigned long start = millis();
 	bool result = true;
-	if(sendAndWait(int_to_str(strlen(reply)), ">")) {
-		// FIXME: maybe there is excessive \n
-		result = sendAndWait(reply, "SEND OK");
-	} else
-		result = false;
+	// FIXME: remove this debug mess
+	dprint("? ");
+	char r[2];
+	memset(r,0,2);
+	while(1) {
+		int c = timedRead(300);
+		if(c > 0) {
+			r[0] = c;
+			dprint(r);
+		}
+		if (c == '>')
+			break;
+		if(millis() - start > 10000) {
+			result = false;
+			dprintln("no prompt");
+			goto reply_end;
+		}
+	}
 
+	result = sendAndWait(reply, "SEND OK");
 
+reply_end:
 	closeMux();
 
-	return true;
+	return result;
 }
 
 void ESP8266::closeMux() {
@@ -375,11 +395,11 @@ void ESP8266::closeMux() {
 	}
 	sendln();
 
+	conn_id = -1;
+
 	receive(3000); // FIXME: very long static timeout here
 	// FIXME: wait for one of
 	// "Linked" or "ERROR" or "we must restart" in single mode
 	// if "OK" or "Link is not" or "Cant close" in multiple connection mode
-
-	conn_id = -1;
 }
 

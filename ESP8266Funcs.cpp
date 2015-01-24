@@ -34,7 +34,7 @@ unsigned int parse_uint(const char *start, const char *end /*=NULL*/) {
 }
 
 char *int_to_str(const int i) {
-	static char buffer[10];
-	sprintf(buffer, "%d", i);
-	return buffer;
+	static char _buf[10];
+	sprintf(_buf, "%d", i);
+	return _buf;
 }

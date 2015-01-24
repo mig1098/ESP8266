@@ -9,14 +9,14 @@ class BufferString {
 			_buffer(buffer),
 			_size(size)
 		{
-			*_buffer = '\0';
+			reset();
 		}
 		bool print(const char *str);
 		bool println(const char *str);
 		char *c_str();
 		char *reset();
 	private:
-		int _len = 0;
+		int _len;
 		unsigned int _size;
 		char *_buffer; 
 };
