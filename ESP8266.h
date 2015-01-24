@@ -25,8 +25,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define MEGA
-#define WIFI_DEBUG
+//#define MEGA
+//#define WIFI_DEBUG
 #define WIFI_DEBUG_RX_PIN 11
 #define WIFI_DEBUG_TX_PIN 12
 
@@ -93,6 +93,7 @@ private:
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
 	void read_all();
 	const int timedRead(unsigned long timeout);
+	const bool wait_symbol(const char symbol, const unsigned long timeout);
 	void wait_for_data(unsigned long timeout);
 	const char* receive(unsigned long timeout = 0);
 	const char* receive_until(const char *endstr, unsigned long timeout = 0);

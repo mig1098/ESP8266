@@ -218,6 +218,19 @@ const int ESP8266::timedRead(unsigned long timeout) {
   return -1;     // -1 indicates timeout
 }
 
+const bool ESP8266::wait_symbol(const char symbol, const unsigned long timeout) {
+	int c;
+	unsigned long _start = millis();
+
+	while(millis() - _start < timeout) {
+		c = _serial.read();
+		if (c > 0 && c == symbol)
+			return true;
+	}
+
+	return false;
+}
+
 const char* ESP8266::receive_until(const char *endstr, unsigned long timeout /*= 0*/) {
 	unsigned long read_timeout = timeout;
 
@@ -348,7 +361,24 @@ const char* ESP8266::get_buffer() {
 	return buffer;
 }
 
+
 bool ESP8266::Reply(const char *reply) {
+	char cmd[20];
+	if(conn_id >=0)
+		sprintf(cmd, "AT+CIPSEND=%u,%u", conn_id, strlen(reply));
+	else
+		sprintf(cmd, "AT+CIPSEND=%u", strlen(reply));
+
+	send(cmd);
+	sendln();
+
+	bool result = true;
+	if(!wait_symbol('>', 5000)) {
+		result = false;
+		dprintln("no prompt");
+		goto reply_end;
+	}
+/*
 	send("AT+CIPSEND=");
 	if(conn_id >= 0) {
 		send(int_to_str(conn_id));
@@ -358,8 +388,8 @@ bool ESP8266::Reply(const char *reply) {
 	send(int_to_str(strlen(reply)));
 	sendln();
 
-	unsigned long start = millis();
 	bool result = true;
+	unsigned long start = millis();
 	// FIXME: remove this debug mess
 	dprint("? ");
 	char r[2];
@@ -372,13 +402,13 @@ bool ESP8266::Reply(const char *reply) {
 		}
 		if (c == '>')
 			break;
-		if(millis() - start > 10000) {
+		if(millis() - start > 20000) {
 			result = false;
 			dprintln("no prompt");
 			goto reply_end;
 		}
 	}
-
+*/
 	result = sendAndWait(reply, "SEND OK");
 
 reply_end:
@@ -397,7 +427,7 @@ void ESP8266::closeMux() {
 
 	conn_id = -1;
 
-	receive(3000); // FIXME: very long static timeout here
+	receive(1000); // FIXME: very long static timeout here
 	// FIXME: wait for one of
 	// "Linked" or "ERROR" or "we must restart" in single mode
 	// if "OK" or "Link is not" or "Cant close" in multiple connection mode
