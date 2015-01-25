@@ -26,9 +26,12 @@
 #include <stdarg.h>
 
 //#define MEGA
-#define WIFI_DEBUG
+//#define WIFI_DEBUG
+#define WIFI_DEBUG_RX_PIN 11
+#define WIFI_DEBUG_TX_PIN 12
 
 #define WIFI_BAUDS 115200
+#define DBG_BAUDS 19200
 #define WIFI_BUFFER_SIZE 1024
 
 #ifdef WIFI_DEBUG
@@ -40,7 +43,7 @@
 extern SoftwareSerial dbgSerial;
 #define DEBUG_SERIAL dbgSerial
 #endif // MEGA
-//	#define DBG(num, args...) print_to_stream(DEBUG_SERIAL, args)
+
 #define dprint(args...) DEBUG_SERIAL.print(args)
 #define dprintln(args...) DEBUG_SERIAL.println(args)
 
@@ -75,6 +78,8 @@ public:
 	const bool confServer(const uint8_t mode = 1, const uint16_t port = 80);
 	const bool confMux(const bool val);
 	const char* ReceiveMessage();
+	bool Reply(const char *reply);
+	const char* get_buffer();
 private:
 	HardwareSerial& _serial;
 	const unsigned long _bauds;
@@ -83,16 +88,19 @@ private:
 
 	const void send(uint8_t num, ...);
 	const void send(const char *AT_Command);
+	const void sendln();
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response);
 	const bool sendAndWait(const char *AT_Command, const char *AT_Response, const unsigned long timeout);
 	void read_all();
 	const int timedRead(unsigned long timeout);
-	void wait_for_data(const unsigned long timeout);
+	const bool wait_symbol(const char symbol, const unsigned long timeout);
+	void wait_for_data(unsigned long timeout);
 	const char* receive(unsigned long timeout = 0);
 	const char* receive_until(const char *endstr, unsigned long timeout = 0);
 	const bool waitResponse(const char *AT_Response);
 	const bool waitResponse(const char *AT_Response, const unsigned long timeout);
-	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout);
+	const char* sendAndGetResult(const char *AT_Command, const unsigned long timeout = 0);
+	void closeMux();
 };
 
 #endif /* ESP8266_H */
